@@ -114,6 +114,7 @@ module Jasmine::Headless
       @search_paths = [ Jasmine::Core.path, Jasmine::Headless.root.join('vendor/assets/javascripts').to_s ]
       @search_paths += self.class.asset_paths
       @search_paths += src_dir.collect { |dir| File.expand_path(dir) }
+      @search_paths += template_dir.collect { |dir| File.expand_path(dir) }
       @search_paths += asset_paths.collect { |dir| File.expand_path(dir) }
       @search_paths += spec_dir.collect { |dir| File.expand_path(dir) }
 
@@ -127,6 +128,20 @@ module Jasmine::Headless
       search_paths.each { |path| @sprockets_environment.append_path(path) }
 
       @sprockets_environment.unregister_postprocessor('application/javascript', Sprockets::SafetyColons)
+
+      # ...and unregister ones we don't want/need
+      @sprockets_environment.instance_eval do
+        EXCLUDED_FORMATS.each do |extension|
+          register_engine ".#{extension}", Jasmine::Headless::NilTemplate
+        end
+
+        register_engine '.coffee', Jasmine::Headless::CoffeeTemplate
+        register_engine '.js', Jasmine::Headless::JSTemplate
+        register_engine '.css', Jasmine::Headless::CSSTemplate
+        register_engine '.jst', Jasmine::Headless::JSTTemplate
+        register_engine '.hamstache', Jasmine::Headless::HamstacheTemplate
+      end
+
       @sprockets_environment
     end
 
@@ -191,6 +206,7 @@ module Jasmine::Headless
       'src_files' => 'src_dir',
       'stylesheets' => 'src_dir',
       'helpers' => 'spec_dir',
+      'templates' => 'template_dir',
       'spec_files' => 'spec_dir'
     }
 
@@ -199,7 +215,10 @@ module Jasmine::Headless
       @searches = {}
       @potential_files_to_filter = []
 
-      %w{src_files stylesheets helpers spec_files}.each do |type|
+      # config hamstache template
+      Jasmine::Headless::HamstacheTemplate.template_root = @config['template_dir']
+
+      %w{templates src_files stylesheets helpers spec_files}.each do |type|
         if data = @config[type]
           add_files(@searches[type] = data.flatten, type, send(SEARCH_ROOTS[type]))
         end
@@ -256,6 +275,10 @@ module Jasmine::Headless
 
     def spec_dir
       @spec_dir ||= config_dir_or_pwd('spec_dir')
+    end
+
+    def template_dir
+      @template_dir ||= config_dir_or_pwd('template_dir')
     end
 
     def asset_paths
